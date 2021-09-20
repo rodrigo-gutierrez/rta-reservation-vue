@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU" crossorigin="anonymous">
+    <!-- JavaScript Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ"
+        crossorigin="anonymous"></script>
+    <title>RTA Target Reservations</title>
+</head>
+
+<body>
+    <style>
+        th {
+            color: white;
+        }
+    </style>
+
+    <div class="mx-auto mt-3" style="width: 700px;">
+        <div class="d-grid gap-3">
+            <h1>RTA Reservations</h1>
+
+            <table class="table table-striped">
+                <tr class="bg-info">
+                    <th onclick="thClick('model')">Model</th>
+                    <th onclick="thClick('name')">Name</th>
+                    <th onclick="thClick('ip')">IP</th>
+                    <th onclick="thClick('status')">Status</th>
+                </tr>
+
+                <tbody id="targetsTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Modal title</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="modalBody">
+                    ...
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="btnReserve" onclick="">Reserve</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const server = "http://localhost:5000";
+        var targets;
+
+        getTargets().catch(error => {
+            console.error(error);
+        });
+
+        function thClick(column) {
+            console.log("Column header click: " + column);
+
+            targets.sort((a, b) => { return a[column] > b[column]; });
+
+            regenTable();
+        };
+
+        function trClick(id) {
+            const target = targets.find(element => element.id == id);
+            document.getElementById("modalTitle").innerHTML = target.name;
+            document.getElementById("btnReserve").setAttribute("onclick", `btnReserveClick('${id}')`);
+            if (target.endtime) {
+                document.getElementById("modalBody").innerHTML = "Reserved until: " + new Date(target.endtime * 1000);
+                document.getElementById("btnReserve").style.display = "none";
+            }
+            else {
+                document.getElementById("modalBody").innerHTML = "Target is available";
+                document.getElementById("btnReserve").innerHTML = "Reserve";
+                document.getElementById("btnReserve").style.display = "block";
+            }
+            console.log("Row click: " + id);
+        };
+
+        async function btnReserveClick(id) {
+            console.log("Button click: " + id);
+            const headers = new Headers();
+            const request = new Request(new URL("targets/" + id + "/reservation" + "?duration=10", server), {
+                method: "POST",
+                headers: headers,
+                mode: "cors",
+                cache: "default"
+            });
+            document.getElementById("btnReserve").innerHTML = "Working...";
+
+            const response = await fetch(request);
+
+            location.reload();
+        };
+
+        function regenTable() {
+            var table = document.getElementById("targetsTable");
+            table.innerHTML = "";
+            targets.forEach(target => {
+                var row = `<tr onclick="trClick('${target.id}')" data-bs-toggle="modal" data-bs-target="#exampleModal">
+                    <td>${target.model}</td>
+                    <td>${target.name}</td>
+                    <td>${target.ip}</td>
+                    <td>${target.status}</td>
+                    </tr>`;
+                table.innerHTML += row;
+            });
+        };
+
+        async function getTargets() {
+            const response = await fetch(new URL("targets", server));
+            targets = await response.json();
+
+            await Promise.all(targets.map(async target => {
+                var status = await getStatus(target.id).catch(error => {
+                    console.error(error);
+                });
+                if (status == "OK") {
+                    target.status = "AVAILABLE";
+                }
+                else {
+                    target.status = "BUSY";
+                    target.endtime = status;
+                }
+            }));
+
+            targets.sort((a, b) => { return a.ip > b.ip; });
+
+            regenTable();
+        };
+
+        async function getStatus(id) {
+            const response = await fetch(new URL("targets/" + id + "/reservation", server));
+            if (response.status == 200) {
+                return response.text();
+            }
+            else if (response.status == 204) {
+                return "OK";
+            }
+            else {
+                // error
+                console.error(response.status, response.statusText);
+            }
+        };
+    </script>
+</body>
+
+</html>
